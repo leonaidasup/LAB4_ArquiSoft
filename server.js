@@ -1,59 +1,64 @@
-const log = console.log
-const http = require('http').createServer()
-const io = require('socket.io')(http, {
-    cors: {
-        origin: "*",
-        methods: ["GET", "POST"]
-    }
-})
-const port = 3000
+const express = require("express");
+const path = require("path");
+const app = express();
+const server = require("http").createServer(app);
+const io = require("socket.io")(server);
 
-// Almacenamos el estado del pizarrón
-let boardState = {
-    paths: [],
-    backgroundColor: '#ffffff'
-}
+// SERVIR ARCHIVOS ESTÁTICOS
+app.use(express.static(__dirname));
 
-http.listen(port, () => log(`Server listening on port: ${port}`))
+let board = [
+    ["B", "", "B", ""],
+    ["", "B", "", "B"],
+    ["N", "", "N", ""],
+    ["", "N", "", "N"]
+];
 
-io.on('connection', (socket) => {
-    log('User connected:', socket.id)
-    
-    // Enviar estado actual del pizarrón al nuevo usuario
-    socket.emit('board-state', boardState)
-    
-    // Manejar nuevo trazo de dibujo
-    socket.on('draw', (data) => {
-        log('Draw event received:', data)
-        // Guardar el trazo en el estado del servidor
-        boardState.paths.push(data)
-        // Retransmitir a todos los demás usuarios
-        socket.broadcast.emit('draw', data)
-    })
-    
-    // Manejar dibujo en tiempo real (mientras se dibuja)
-    socket.on('drawing', (data) => {
-        // No guardamos estos datos, solo los retransmitimos
-        socket.broadcast.emit('drawing', data)
-    })
-    
-    // Manejar limpieza del pizarrón
-    socket.on('clear-board', () => {
-        log('Board cleared by user:', socket.id)
-        boardState.paths = []
-        boardState.backgroundColor = '#ffffff'
-        // Notificar a todos los usuarios
-        io.emit('clear-board')
-    })
-    
-    // Manejar cambio de color de fondo
-    socket.on('background-color', (color) => {
-        log('Background color changed to:', color)
-        boardState.backgroundColor = color
-        socket.broadcast.emit('background-color', color)
-    })
-    
-    socket.on('disconnect', () => {
-        log('User disconnected:', socket.id)
-    })
-})
+let currentTurn = "B";
+
+io.on("connection", (socket) => {
+    console.log("Jugador conectado:", socket.id);
+
+    // Enviar tablero al conectar
+    socket.emit("boardState", { board, turn: currentTurn });
+
+    // --- MOVER FICHA ---
+    socket.on("move", ({ from, to }) => {
+        const fx = from.x, fy = from.y;
+        const tx = to.x, ty = to.y;
+
+        const ficha = board[fy][fx];
+
+        if (ficha === currentTurn && board[ty][tx] === "") {
+            board[ty][tx] = ficha;
+            board[fy][fx] = "";
+
+            // REGISTRO DE JUGADA
+            const jugada = {
+                jugador: socket.id,
+                ficha,
+                desde: { x: fx, y: fy },
+                hacia: { x: tx, y: ty }
+            };
+
+            console.log(
+                `Jugador ${socket.id} movió ficha ${ficha} desde (${fx},${fy}) hacia (${tx},${ty})`
+            );
+
+            io.emit("jugada", jugada);
+
+            // Cambiar turno
+            currentTurn = currentTurn === "B" ? "N" : "B";
+        }
+
+        io.emit("boardState", { board, turn: currentTurn });
+    });
+
+    socket.on("disconnect", () => {
+        console.log("Jugador desconectado:", socket.id);
+    });
+});
+
+server.listen(3000, () => {
+    console.log("SERVIDOR OK → http://localhost:3000");
+});

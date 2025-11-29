@@ -65,44 +65,47 @@ function getTouchPos(e) {
 }
 
 function startDrawing(e) {
-    isDrawing = true
-    const pos = getMousePos(e)
-    currentPath = [{
-        x: pos.x,
-        y: pos.y,
-        color: currentColor,
-        lineWidth: lineWidth
-    }]
-    
-    ctx.beginPath()
-    ctx.moveTo(pos.x, pos.y)
-}
+    isDrawing = true;
+    const pos = getMousePos(e);
 
-function draw(e) {
-    if (!isDrawing) return
-    
-    const pos = getMousePos(e)
-    currentPath.push({
-        x: pos.x,
-        y: pos.y,
-        color: currentColor,
-        lineWidth: lineWidth
-    })
-    
-    // Dibujar localmente
-    ctx.strokeStyle = currentColor
-    ctx.lineWidth = lineWidth
-    ctx.lineTo(pos.x, pos.y)
-    ctx.stroke()
-    
-    // Enviar datos de dibujo en tiempo real
+    paintPixel(pos.x, pos.y, currentColor);
+
     socket.emit('drawing', {
         x: pos.x,
         y: pos.y,
-        color: currentColor,
-        lineWidth: lineWidth,
-        drawing: true
-    })
+        color: currentColor
+    });
+}
+
+function paintPixel(x, y, color) {
+    const imageData = ctx.createImageData(1, 1);
+    const d = imageData.data;
+
+    // Convertir color hex a RGB
+    const r = parseInt(color.substr(1, 2), 16);
+    const g = parseInt(color.substr(3, 2), 16);
+    const b = parseInt(color.substr(5, 2), 16);
+
+    d[0] = r;
+    d[1] = g;
+    d[2] = b;
+    d[3] = 255;
+
+    ctx.putImageData(imageData, Math.floor(x), Math.floor(y));
+}
+
+function draw(e) {
+    if (!isDrawing) return;
+
+    const pos = getMousePos(e);
+
+    paintPixel(pos.x, pos.y, currentColor);
+
+    socket.emit('drawing', {
+        x: pos.x,
+        y: pos.y,
+        color: currentColor
+    });
 }
 
 function stopDrawing() {
@@ -164,19 +167,13 @@ function downloadImage() {
 }
 
 function drawPath(pathData) {
-    if (!pathData.path || pathData.path.length === 0) return
-    
-    ctx.beginPath()
-    ctx.strokeStyle = pathData.path[0].color
-    ctx.lineWidth = pathData.path[0].lineWidth
-    ctx.moveTo(pathData.path[0].x, pathData.path[0].y)
-    
-    for (let i = 1; i < pathData.path.length; i++) {
-        ctx.lineTo(pathData.path[i].x, pathData.path[i].y)
-    }
-    
-    ctx.stroke()
+    if (!pathData || !pathData.path) return;
+
+    pathData.path.forEach(p => {
+        paintPixel(p.x, p.y, p.color);
+    });
 }
+
 
 // Eventos del socket
 socket.on('connect', () => {
@@ -201,14 +198,9 @@ socket.on('draw', (data) => {
 })
 
 socket.on('drawing', (data) => {
-    // Mostrar dibujo en tiempo real de otros usuarios
-    if (data.drawing) {
-        ctx.strokeStyle = data.color
-        ctx.lineWidth = data.lineWidth
-        ctx.lineTo(data.x, data.y)
-        ctx.stroke()
-    }
-})
+    paintPixel(data.x, data.y, data.color);
+});
+
 
 socket.on('clear-board', () => {
     log('Board cleared by another user')

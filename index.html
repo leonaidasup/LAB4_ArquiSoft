@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pizarrón Virtual Colaborativo</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f0f0f0;
+        }
+        
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 0 20px rgba(0,0,0,0.1);
+            padding: 20px;
+        }
+        
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 30px;
+        }
+        
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            margin-bottom: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            align-items: center;
+        }
+        
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .control-group label {
+            font-weight: bold;
+            color: #555;
+        }
+        
+        button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background-color 0.3s;
+        }
+        
+        #clearBtn {
+            background-color: #dc3545;
+            color: white;
+        }
+        
+        #clearBtn:hover {
+            background-color: #c82333;
+        }
+        
+        #downloadBtn {
+            background-color: #28a745;
+            color: white;
+        }
+        
+        #downloadBtn:hover {
+            background-color: #218838;
+        }
+        
+        input[type="color"] {
+            width: 50px;
+            height: 35px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        
+        input[type="range"] {
+            width: 100px;
+        }
+        
+        .canvas-container {
+            text-align: center;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            padding: 10px;
+            background: white;
+        }
+        
+        #drawingCanvas {
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            cursor: crosshair;
+            touch-action: none;
+        }
+        
+        .info {
+            margin-top: 20px;
+            padding: 15px;
+            background: #e9ecef;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+        
+        .status {
+            display: inline-block;
+            padding: 5px 10px;
+            border-radius: 15px;
+            font-size: 12px;
+            font-weight: bold;
+            margin-top: 10px;
+        }
+        
+        .connected {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        
+        .disconnected {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        
+        @media (max-width: 768px) {
+            .controls {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            
+            .control-group {
+                justify-content: space-between;
+            }
+            
+            #drawingCanvas {
+                max-width: 100%;
+                height: auto;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎨 Pizarrón Virtual Colaborativo</h1>
+        
+        <div class="controls">
+            <div class="control-group">
+                <label for="colorPicker">Color del pincel:</label>
+                <input type="color" id="colorPicker" value="#000000">
+                <span id="colorDisplay">#000000</span>
+            </div>
+            
+            <div class="control-group">
+                <label for="lineWidthRange">Grosor:</label>
+                <input type="range" id="lineWidthRange" min="1" max="20" value="2">
+                <span id="lineWidthDisplay">2px</span>
+            </div>
+            
+            <div class="control-group">
+                <label for="bgColorPicker">Color de fondo:</label>
+                <input type="color" id="bgColorPicker" value="#ffffff">
+            </div>
+            
+            <button id="clearBtn">🗑️ Limpiar Pizarrón</button>
+            <button id="downloadBtn">📥 Descargar Imagen</button>
+        </div>
+        
+        <div class="canvas-container">
+            <canvas id="drawingCanvas"></canvas>
+        </div>
+        
+        <div class="info">
+            <h3>📡 Información de Conexión WebSocket</h3>
+            <p><strong>Estado:</strong> <span id="connectionStatus" class="status disconnected">Desconectado</span></p>
+            <p><strong>Instrucciones:</strong> 
+                • Dibuja con el mouse o toque en el canvas
+                • Cambia colores y grosor del pincel
+                • Limpia el pizarrón para todos los usuarios
+                • Descarga tu creación como PNG
+                • Abre la consola del navegador (F12) para ver los detalles técnicos de WebSocket
+            </p>
+            <p><strong>Funcionalidades colaborativas:</strong>
+                • Múltiples usuarios pueden dibujar simultáneamente
+                • Cambios se sincronizan en tiempo real
+                • El estado del pizarrón se mantiene para nuevos usuarios
+            </p>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
+    <script>
+        // Conectar al servidor WebSocket
+        const socket = io('http://localhost:3000')
+        const log = console.log
+
+        // Variables para el canvas
+        let canvas, ctx
+        let isDrawing = false
+        let currentColor = '#000000'
+        let lineWidth = 2
+        let currentPath = []
+
+        // Inicializar cuando se carga la página
+        document.addEventListener('DOMContentLoaded', () => {
+            initializeCanvas()
+            setupEventListeners()
+        })
+
+        function initializeCanvas() {
+            canvas = document.getElementById('drawingCanvas')
+            ctx = canvas.getContext('2d')
+            
+            // Configurar el canvas
+            canvas.width = 800
+            canvas.height = 600
+            ctx.lineCap = 'round'
+            ctx.lineJoin = 'round'
+            ctx.fillStyle = '#ffffff'
+            ctx.fillRect(0, 0, canvas.width, canvas.height)
+        }
+
+        function setupEventListeners() {
+            // Eventos del mouse
+            canvas.addEventListener('mousedown', startDrawing)
+            canvas.addEventListener('mousemove', draw)
+            canvas.addEventListener('mouseup', stopDrawing)
+            canvas.addEventListener('mouseout', stopDrawing)
+            
+            // Eventos táctiles para dispositivos móviles
+            canvas.addEventListener('touchstart', handleTouch)
+            canvas.addEventListener('touchmove', handleTouch)
+            canvas.addEventListener('touchend', stopDrawing)
+            
+            // Botones de control
+            document.getElementById('clearBtn').addEventListener('click', clearBoard)
+            document.getElementById('colorPicker').addEventListener('change', changeColor)
+            document.getElementById('lineWidthRange').addEventListener('input', changeLineWidth)
+            document.getElementById('downloadBtn').addEventListener('click', downloadImage)
+            document.getElementById('bgColorPicker').addEventListener('change', changeBackgroundColor)
+        }
+
+        function getMousePos(e) {
+            const rect = canvas.getBoundingClientRect()
+            return {
+                x: e.clientX - rect.left,
+                y: e.clientY - rect.top
+            }
+        }
+
+        function getTouchPos(e) {
+            const rect = canvas.getBoundingClientRect()
+            return {
+                x: e.touches[0].clientX - rect.left,
+                y: e.touches[0].clientY - rect.top
+            }
+        }
+
+        function startDrawing(e) {
+            isDrawing = true
+            const pos = getMousePos(e)
+            currentPath = [{
+                x: pos.x,
+                y: pos.y,
+                color: currentColor,
+                lineWidth: lineWidth
+            }]
+            
+            ctx.beginPath()
+            ctx.moveTo(pos.x, pos.y)
+        }
+
+        function draw(e) {
+            if (!isDrawing) return
+            
+            const pos = getMousePos(e)
+            currentPath.push({
+                x: pos.x,
+                y: pos.y,
+                color: currentColor,
+                lineWidth: lineWidth
+            })
+            
+            // Dibujar localmente
+            ctx.strokeStyle = currentColor
+            ctx.lineWidth = lineWidth
+            ctx.lineTo(pos.x, pos.y)
+            ctx.stroke()
+            
+            // Enviar datos de dibujo en tiempo real
+            socket.emit('drawing', {
+                x: pos.x,
+                y: pos.y,
+                color: currentColor,
+                lineWidth: lineWidth,
+                drawing: true
+            })
+        }
+
+        function stopDrawing() {
+            if (!isDrawing) return
+            isDrawing = false
+            
+            // Enviar el trazo completo al servidor
+            if (currentPath.length > 0) {
+                socket.emit('draw', {
+                    path: currentPath,
+                    timestamp: Date.now()
+                })
+            }
+            
+            currentPath = []
+            ctx.beginPath()
+        }
+
+        function handleTouch(e) {
+            e.preventDefault()
+            const touch = e.touches[0]
+            const mouseEvent = new MouseEvent(e.type === 'touchstart' ? 'mousedown' : 
+                                             e.type === 'touchmove' ? 'mousemove' : 'mouseup', {
+                clientX: touch.clientX,
+                clientY: touch.clientY
+            })
+            canvas.dispatchEvent(mouseEvent)
+        }
+
+        function clearBoard() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height)
+            ctx.fillStyle = '#ffffff'
+            ctx.fillRect(0, 0, canvas.width, canvas.height)
+            socket.emit('clear-board')
+        }
+
+        function changeColor(e) {
+            currentColor = e.target.value
+            document.getElementById('colorDisplay').textContent = currentColor
+        }
+
+        function changeLineWidth(e) {
+            lineWidth = e.target.value
+            document.getElementById('lineWidthDisplay').textContent = lineWidth + 'px'
+        }
+
+        function changeBackgroundColor(e) {
+            const bgColor = e.target.value
+            ctx.fillStyle = bgColor
+            ctx.fillRect(0, 0, canvas.width, canvas.height)
+            socket.emit('background-color', bgColor)
+        }
+
+        function downloadImage() {
+            const link = document.createElement('a')
+            link.download = 'pizarron-' + new Date().toISOString().slice(0, 10) + '.png'
+            link.href = canvas.toDataURL()
+            link.click()
+        }
+
+        function drawPath(pathData) {
+            if (!pathData.path || pathData.path.length === 0) return
+            
+            ctx.beginPath()
+            ctx.strokeStyle = pathData.path[0].color
+            ctx.lineWidth = pathData.path[0].lineWidth
+            ctx.moveTo(pathData.path[0].x, pathData.path[0].y)
+            
+            for (let i = 1; i < pathData.path.length; i++) {
+                ctx.lineTo(pathData.path[i].x, pathData.path[i].y)
+            }
+            
+            ctx.stroke()
+        }
+
+        // Eventos del socket
+        socket.on('connect', () => {
+            log('=== WEBSOCKET CONNECTION ESTABLISHED ===')
+            log('Socket ID:', socket.id)
+            log('Transport:', socket.io.engine.transport.name)
+            log('Upgraded:', socket.io.engine.upgraded)
+            
+            document.getElementById('connectionStatus').textContent = 'Conectado'
+            document.getElementById('connectionStatus').className = 'status connected'
+        })
+
+        socket.on('board-state', (state) => {
+            log('Received board state:', state)
+            // Restaurar estado del pizarrón
+            ctx.fillStyle = state.backgroundColor
+            ctx.fillRect(0, 0, canvas.width, canvas.height)
+            
+            // Dibujar todos los trazos guardados
+            state.paths.forEach(pathData => {
+                drawPath(pathData)
+            })
+        })
+
+        socket.on('draw', (data) => {
+            log('Received draw event from another user:', data)
+            drawPath(data)
+        })
+
+        socket.on('drawing', (data) => {
+            log('Real-time drawing from another user:', data)
+            // Mostrar dibujo en tiempo real de otros usuarios
+            if (data.drawing) {
+                ctx.strokeStyle = data.color
+                ctx.lineWidth = data.lineWidth
+                ctx.lineTo(data.x, data.y)
+                ctx.stroke()
+            }
+        })
+
+        socket.on('clear-board', () => {
+            log('🗑️ Board cleared by another user')
+            ctx.clearRect(0, 0, canvas.width, canvas.height)
+            ctx.fillStyle = '#ffffff'
+            ctx.fillRect(0, 0, canvas.width, canvas.height)
+        })
+
+        socket.on('background-color', (color) => {
+            log('🎨 Background color changed by another user:', color)
+            ctx.fillStyle = color
+            ctx.fillRect(0, 0, canvas.width, canvas.height)
+        })
+
+        socket.on('disconnect', () => {
+            log('Disconnected from server')
+            document.getElementById('connectionStatus').textContent = 'Desconectado'
+            document.getElementById('connectionStatus').className = 'status disconnected'
+        })
+
+        // Logging detallado para análisis de WebSocket
+        socket.io.on('ping', () => {
+            log('📡 PING sent to server')
+        })
+
+        socket.io.on('pong', (latency) => {
+            log('📡 PONG received from server, latency:', latency, 'ms')
+        })
+
+        // Monitorear todos los eventos del socket
+        const originalEmit = socket.emit
+        socket.emit = function(event, ...args) {
+            log('OUTGOING EVENT:', event, 'Data:', args)
+            return originalEmit.call(this, event, ...args)
+        }
+
+        // Interceptar todos los eventos entrantes
+        const originalOn = socket.on
+        socket.on = function(event, callback) {
+            return originalOn.call(this, event, function(...args) {
+                if (event !== 'connect' && event !== 'disconnect') {
+                    log('INCOMING EVENT:', event, 'Data:', args)
+                }
+                return callback.apply(this, args)
+            })
+        }
+    </script>
+</body>
+</html>

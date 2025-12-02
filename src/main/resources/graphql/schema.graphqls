@@ -1,0 +1,46 @@
+type Flight {
+    id: ID!
+    flightNumber: String!
+    origin: String!
+    destination: String!
+    # Nota: Usamos String para representar LocalDateTime, el Controller lo parsea
+    departureTime: String! 
+    arrivalTime: String!   
+    seatsAvailable: Int! # ¡CORREGIDO! Nombre de campo según la entidad del usuario
+    
+    reservations: [Reservation]
+}
+
+type Reservation {
+    id: ID!
+    passengerName: String!
+    seatNumber: String! 
+    reservationCode: String! # ¡CORREGIDO! Campo agregado
+    
+    flight: Flight! 
+}
+
+type Query {
+    allFlights: [Flight!]!
+    
+    flightById(id: ID!): Flight
+}
+
+type Mutation {
+    # Coincide con FlightController.addFlight que usa argumentos directos
+    addFlight(
+        flightNumber: String!
+        seatsAvailable: Int!
+        origin: String!
+        destination: String!
+        departureTime: String!
+        arrivalTime: String!
+    ): Flight!
+    
+    # Coincide con ReservationController.reserveFlight que usa argumentos directos
+    reserveFlight(
+        flightId: ID!
+        passengerName: String!
+        seatNumber: String!
+    ): Reservation!
+}

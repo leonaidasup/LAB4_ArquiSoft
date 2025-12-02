@@ -1,0 +1,62 @@
+version: '3.8'
+
+services:
+  # 1. Base de Datos (PostgreSQL)
+  db:
+    image: postgres:15-alpine
+    container_name: postgres_lab4v
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: lab4v 
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: always
+
+  # 2. Aplicación Spring Boot (lab4v)
+  app:
+    build: . 
+    container_name: lab4v_app
+    ports:
+      - "8088:8088"
+      - "8080:8080"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/lab4v 
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres
+      MANAGEMENT_SERVER_PORT: 8080 
+    depends_on:
+      - db
+    restart: always
+
+  # 3. Monitoreo (Prometheus)
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      # Monta el archivo de configuración creado abajo
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+    restart: always
+
+  # 4. Visualización (Grafana)
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - grafana_data:/var/lib/grafana
+    restart: always
+
+volumes:
+  postgres_data:
+  grafana_data:
